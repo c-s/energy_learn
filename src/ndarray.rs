@@ -1,13 +1,13 @@
 use std::ops::{Index, IndexMut};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Array2<T: Clone> {
     data: Vec<T>,
     stride: (usize, usize),
     size: (usize, usize),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Array3<T: Clone> {
     data: Vec<T>,
     stride: (usize, usize, usize),

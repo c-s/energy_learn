@@ -47,8 +47,10 @@ impl Lattice {
                             inverse_T: f64) {
         let flat_spin_index = flat_spin_range.ind_sample(rng);
         let spinset_index = self.cube.get_spinset_index(flat_spin_index);
-        if spinset_index >= free_spinset_start_index ||
-            !free_membrane.is_in_flat(flat_spin_index, &self.cube) {
+        let cond1 = !self.membranes.iter().any(|memb| memb.is_in_flat(flat_spin_index, &self.cube));
+        if cond1 ||
+            (spinset_index >= free_spinset_start_index &&
+                free_membrane.is_in_flat(flat_spin_index, &self.cube)) {
                 let mut energy_change = 0.0;
                 let is_x_boundary = self.cube.is_x_boundary(flat_spin_index);
                 let is_y_boundary = self.cube.is_y_boundary(flat_spin_index);
@@ -319,7 +321,8 @@ impl Cube {
            // but store them just in case.
            num_spinsets: num_spin_configs,
            x_boundary_helper: (num_spin_configs, num_spin_configs * size.0),
-           y_boundary_helper: (num_spin_configs * size.0, num_spin_configs * size.0 * size.1),
+           y_boundary_helper: (num_spin_configs * size.0,
+                                num_spin_configs * size.0 * size.1),
            z_boundary_helper: (num_spin_configs * size.0 * size.1,
                                 num_spin_configs * size.0 * size.1 * size.2),
            x_weight_boundary_helper: (1, size.0),
@@ -545,12 +548,27 @@ impl Membrane {
 
     fn is_in_flat(&self, pos: usize, cube: &Cube) -> bool {
         let rel_pos = pos - self.spin_position;
-        let (index_in_oneset, _) = div_mod_floor(rel_pos, cube.num_spinsets);
+        //let (index_in_oneset, _) = integer::div_mod_floor(rel_pos, cube.num_spinsets);
+        if self.spin_stride.0 <= self.spin_stride.1 {
+            let (rel_1, rem_1) = integer::div_mod_floor(rel_pos, self.spin_stride.1);
+            if rel_1 < 0 || rel_1 >= self.size.1 { false }
+            else {
+                let (rel_0, _) = integer::div_mod_floor(rel_1, self.spin_stride.0);
+                rel_0 < 0 || rel_0 >= self.size.0
+            }
+        } else {
+            let (rel_0, rem_0) = integer::div_mod_floor(rel_pos, self.spin_stride.0);
+            if rel_0 < 0 || rel_0 >= self.size.0 { false }
+            else {
+                let (rel_1, _) = integer::div_mod_floor(rel_0, self.spin_stride.1);
+                rel_1 < 0 || rel_1 >= self.size.1
+            }
+        }
 
-        let small_stride = cmp::min(self.spin_stride.0, self.spin_stride.1);
+        //let small_stride = cmp::min(self.spin_stride.0, self.spin_stride.1);
         //let (_, rel_pos) = integer::div_rem(rel_pos, cube.spinset_stride);
-        let (d, m) = integer::div_rem(index_in_oneset, small_stride);
-        m == 0 && d>=0 && d<self.size.0 * self.size.1
+        //let (d, m) = integer::div_rem(index_in_oneset, small_stride);
+        //m == 0 && d>=0 && d<self.size.0 * self.size.1
     }
 
     fn get_spin<'a>(&self, cube: &'a Cube, spinset_index: usize, pos: (usize, usize)) -> &'a bool {

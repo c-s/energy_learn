@@ -18,15 +18,29 @@ pub struct Lattice {
 
 trait ToNumber {
     fn to_f64(self) -> f64;
-    fn to_i32(self) -> i32;
+    fn to_i64(self) -> i64;
 }
 
 impl ToNumber for bool {
     fn to_f64(self) -> f64 {
         if self { 1.0 } else { 0.0 }
     }
-    fn to_i32(self) -> i32 {
+    fn to_i64(self) -> i64 {
         if self { 1 } else { 0 }
+    }
+}
+
+trait Sum {
+    fn temp_sum(&self) -> i64;
+}
+
+impl Sum for Vec<i64> {
+    fn temp_sum(&self) -> i64 {
+        let mut sum = 0i64;
+        for item in self.iter() {
+            sum += *item;
+        }
+        sum
     }
 }
 
@@ -186,29 +200,29 @@ impl Lattice {
         let free_membrane = self.membranes[free_membrane_index];
 
         for index in 0..total_steps {
+            if index % interm_step_size == 0 {
+                println!("index: {}", index);
+                println!("energy: {}", self.cube.calculate_energy());
+                println!("are spin products consistent? {}", self.cube.check_spin_product_consistency());
+                //sender.send(self.cube.get_spinset(fixed_spinset_index).to_vec());
+                sender.send(self.get_membrane_spins(free_membrane_index, observe_index));
+            }
             if index % num_spin_runs_per_weight == 0 {
-                let xyz = rng.gen::<usize>() % 3;
-                match xyz {
-                    0 =>
-                        self.test_and_update_weightX(
-                            rng,
-                            &flat_weight_range,
-                            &unit_interval,
-                            &normal_dist, inverse_T),
-                    1 =>
-                        self.test_and_update_weightY(
-                            rng,
-                            &flat_weight_range,
-                            &unit_interval,
-                            &normal_dist, inverse_T),
-                    2 =>
-                        self.test_and_update_weightZ(
-                            rng,
-                            &flat_weight_range,
-                            &unit_interval,
-                            &normal_dist, inverse_T),
-                    r => panic!("not possible {}.", r),
-                }
+                self.test_and_update_weightX(
+                    rng,
+                    &flat_weight_range,
+                    &unit_interval,
+                    &normal_dist, inverse_T);
+                self.test_and_update_weightY(
+                    rng,
+                    &flat_weight_range,
+                    &unit_interval,
+                    &normal_dist, inverse_T);
+                self.test_and_update_weightZ(
+                    rng,
+                    &flat_weight_range,
+                    &unit_interval,
+                    &normal_dist, inverse_T);
             }
             else {
                 self.test_and_update_spin(
@@ -216,11 +230,6 @@ impl Lattice {
                     &flat_spin_range,
                     &unit_interval,
                     free_spinset_start_index, free_membrane, inverse_T);
-            }
-            if index % interm_step_size == 0 {
-                println!("index: {}", index);
-                //sender.send(self.cube.get_spinset(fixed_spinset_index).to_vec());
-                sender.send(self.get_membrane_spins(free_membrane_index, observe_index));
             }
         }
     }
@@ -268,9 +277,9 @@ pub struct Cube {
     x_weight_boundary_helper: (usize, usize),
     y_weight_boundary_helper: (usize, usize),
     z_weight_boundary_helper: (usize, usize),
-    spin_product_x: Vec<i32>,
-    spin_product_y: Vec<i32>,
-    spin_product_z: Vec<i32>,
+    spin_product_x: Vec<i64>,
+    spin_product_y: Vec<i64>,
+    spin_product_z: Vec<i64>,
 }
 
 impl Cube {
@@ -279,20 +288,20 @@ impl Cube {
         let total_weight_size = size.0 * size.1 * size.2;
         let spins = rng.gen_iter::<bool>().take(total_spin_size).collect::<Vec<bool>>();
         let spin_stride = (num_spin_configs, num_spin_configs * size.0, num_spin_configs * size.0 * size.1);
-        //let spin_product_x = spins.iter().zip(spins.iter().skip(spin_stride.0).cycle()).map(|(s, n)| s*n).sum<i32>();
+        //let spin_product_x = spins.iter().zip(spins.iter().skip(spin_stride.0).cycle()).map(|(s, n)| s*n).sum<i64>();
         let mut spin_product_x = Vec::with_capacity(total_weight_size);
         let mut spin_product_y = Vec::with_capacity(total_weight_size);
         let mut spin_product_z = Vec::with_capacity(total_weight_size);
         //for i in (0..).step_by(num_spin_configs).take(total_weight_size) {
         for ii in 0..total_weight_size {
             let i = ii * num_spin_configs;
-            let mut x_sum = 0i32;
-            let mut y_sum = 0i32;
-            let mut z_sum = 0i32;
+            let mut x_sum = 0i64;
+            let mut y_sum = 0i64;
+            let mut z_sum = 0i64;
             for j in 0..num_spin_configs {
-                x_sum += spins[i + j] as i32 * spins[(i + j + spin_stride.0) % total_spin_size] as i32;
-                y_sum += spins[i + j] as i32 * spins[(i + j + spin_stride.1) % total_spin_size] as i32;
-                z_sum += spins[i + j] as i32 * spins[(i + j + spin_stride.2) % total_spin_size] as i32;
+                x_sum += spins[i + j] as i64 * spins[(i + j + spin_stride.0) % total_spin_size] as i64;
+                y_sum += spins[i + j] as i64 * spins[(i + j + spin_stride.1) % total_spin_size] as i64;
+                z_sum += spins[i + j] as i64 * spins[(i + j + spin_stride.2) % total_spin_size] as i64;
             }
             spin_product_x.push(x_sum);
             spin_product_y.push(y_sum);
@@ -359,27 +368,27 @@ impl Cube {
         let spin = self.get_flat_spin(pos);
         let spin_chg = if spin { 1 } else { -1 };
         if !is_x_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.0) as i32;
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.0) as i64;
             self.spin_product_x[weight_index - self.weight_stride.0] += spin_chg * prev_spin;
         }
         if !is_x_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.0) as i32;
+            let next_spin = self.get_flat_spin(pos + self.spin_stride.0) as i64;
             self.spin_product_x[weight_index] += spin_chg * next_spin;
         }
         if !is_y_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.1) as i32;
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.1) as i64;
             self.spin_product_y[weight_index - self.weight_stride.1] += spin_chg * prev_spin;
         }
         if !is_y_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.1) as i32;
+            let next_spin = self.get_flat_spin(pos + self.spin_stride.1) as i64;
             self.spin_product_y[weight_index] += spin_chg * next_spin;
         }
         if !is_z_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.2) as i32;
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.2) as i64;
             self.spin_product_z[weight_index - self.weight_stride.2] += spin_chg * prev_spin;
         }
         if !is_z_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.2) as i32;
+            let next_spin = self.get_flat_spin(pos + self.spin_stride.2) as i64;
             self.spin_product_z[weight_index] += spin_chg * next_spin;
         }
     }
@@ -494,17 +503,50 @@ impl Cube {
                     //let x_plus_pos = self.get_flat_weight_index((x + 1, y, z));
                     //let y_plus_pos = self.get_flat_weight_index((x, y + 1, z));
                     //let z_plus_pos = self.get_flat_weight_index((x, y, z + 1));
-                    let weightX = self.get_flat_weightX(coord);
-                    let weightY = self.get_flat_weightY(coord);
-                    let weightZ = self.get_flat_weightZ(coord);
-                    let sx = self.spin_product_x[coord];
-                    let sy = self.spin_product_y[coord];
-                    let sz = self.spin_product_z[coord];
+                    let weightX = self.get_flat_weightX(weight_pos);
+                    let weightY = self.get_flat_weightY(weight_pos);
+                    let weightZ = self.get_flat_weightZ(weight_pos);
+                    let sx = self.spin_product_x[weight_pos] as f64;
+                    let sy = self.spin_product_y[weight_pos] as f64;
+                    let sz = self.spin_product_z[weight_pos] as f64;
                     energy += sx * weightX + sy * weightY + sz * weightZ;
                 }
             }
         }
         energy
+    }
+
+    fn check_spin_product_consistency(&self) -> bool {
+        let total_weight_size = self.flat_weight_size();
+        let total_spin_size = self.flat_spin_size();
+        let mut spin_product_x = Vec::with_capacity(total_weight_size);
+        let mut spin_product_y = Vec::with_capacity(total_weight_size);
+        let mut spin_product_z = Vec::with_capacity(total_weight_size);
+        //for i in (0..).step_by(num_spin_configs).take(total_weight_size) {
+        let spins = &self.spins;
+        for ii in 0..total_weight_size {
+            let i = ii * self.num_spinsets;
+            let mut x_sum = 0i64;
+            let mut y_sum = 0i64;
+            let mut z_sum = 0i64;
+            for j in 0..self.num_spinsets {
+                x_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.0) % total_spin_size] as i64;
+                y_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.1) % total_spin_size] as i64;
+                z_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.2) % total_spin_size] as i64;
+            }
+            spin_product_x.push(x_sum);
+            spin_product_y.push(y_sum);
+            spin_product_z.push(z_sum);
+        }
+        println!("spin_product_x sum: {}, self.spin_product_x sum: {}", spin_product_x.temp_sum(), self.spin_product_x.temp_sum());
+        println!("spin_product_y sum: {}, self.spin_product_y sum: {}", spin_product_y.temp_sum(), self.spin_product_y.temp_sum());
+        println!("spin_product_z sum: {}, self.spin_product_z sum: {}", spin_product_z.temp_sum(), self.spin_product_z.temp_sum());
+        assert_eq!(spin_product_x.len(), self.spin_product_x.len());
+        assert_eq!(spin_product_y.len(), self.spin_product_y.len());
+        assert_eq!(spin_product_z.len(), self.spin_product_z.len());
+        spin_product_x == self.spin_product_x &&
+            spin_product_y == self.spin_product_y &&
+                spin_product_z == self.spin_product_z
     }
 }
 

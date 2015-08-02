@@ -1,4 +1,5 @@
 use std::ops::{Index, IndexMut};
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Array2<T: Clone> {
@@ -37,9 +38,21 @@ impl<T> Array2<T> where T: Clone {
         Array2 {
             data: v,
             stride: stride,
-            size: if num_steps.0 <= num_steps.1 { (num_steps.1 / num_steps.0, num_steps.1) }
-                                            else { (num_steps.0, num_steps.0 / num_steps.1) },
+            size: if num_steps.0 <= num_steps.1 { (num_steps.1 / num_steps.0, stride.0) }
+                                            else { (stride.1, num_steps.0 / num_steps.1) },
         }
     }
 }
 
+impl fmt::Display for Array2<bool> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Array2<bool>\n");
+        for i in 0..self.size.0 {
+            for j in 0..self.size.1 {
+                write!(f, "{}", if self[(i, j)] { '1' } else { '0' });
+            }
+            write!(f, "\n");
+        }
+        Ok(())
+    }
+}

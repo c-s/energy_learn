@@ -51,22 +51,28 @@ impl Lattice {
         if cond1 ||
             (spinset_index >= free_spinset_start_index &&
                 free_membrane.is_in_flat(flat_spin_index, &self.cube)) {
+                //if spinset_index >= free_spinset_start_index &&
+                //free_membrane.is_in_flat(flat_spin_index, &self.cube) {
+                //    println!("this is on a membrane in a test set.");
+                //}
                 let mut energy_change = 0.0;
                 let is_x_boundary = self.cube.is_x_boundary(flat_spin_index);
                 let is_y_boundary = self.cube.is_y_boundary(flat_spin_index);
                 let is_z_boundary = self.cube.is_z_boundary(flat_spin_index);
                 let pos = flat_spin_index;
-                if !is_x_boundary.0 { energy_change += self.cube.get_flat_weightX(pos - self.cube.weight_stride.0) *
+                let weight_index = self.cube.get_weight_index_from_spin_index(pos);
+
+                if !is_x_boundary.0 { energy_change += self.cube.get_flat_weightX(weight_index - self.cube.weight_stride.0) *
                                                         self.cube.get_flat_spin(pos - self.cube.spin_stride.0).to_f64(); }
-                if !is_x_boundary.1 { energy_change += self.cube.get_flat_weightX(pos) *
+                if !is_x_boundary.1 { energy_change += self.cube.get_flat_weightX(weight_index) *
                                                         self.cube.get_flat_spin(pos + self.cube.spin_stride.0).to_f64(); }
-                if !is_y_boundary.0 { energy_change += self.cube.get_flat_weightY(pos - self.cube.weight_stride.1) *
+                if !is_y_boundary.0 { energy_change += self.cube.get_flat_weightY(weight_index - self.cube.weight_stride.1) *
                                                         self.cube.get_flat_spin(pos - self.cube.spin_stride.1).to_f64(); }
-                if !is_y_boundary.1 { energy_change += self.cube.get_flat_weightY(pos) *
+                if !is_y_boundary.1 { energy_change += self.cube.get_flat_weightY(weight_index) *
                                                         self.cube.get_flat_spin(pos + self.cube.spin_stride.1).to_f64(); }
-                if !is_z_boundary.0 { energy_change += self.cube.get_flat_weightZ(pos - self.cube.weight_stride.2) *
+                if !is_z_boundary.0 { energy_change += self.cube.get_flat_weightZ(weight_index - self.cube.weight_stride.2) *
                                                         self.cube.get_flat_spin(pos - self.cube.spin_stride.2).to_f64(); }
-                if !is_z_boundary.1 { energy_change += self.cube.get_flat_weightZ(pos) *
+                if !is_z_boundary.1 { energy_change += self.cube.get_flat_weightZ(weight_index) *
                                                         self.cube.get_flat_spin(pos + self.cube.spin_stride.2).to_f64(); }
                 let spin = self.cube.get_flat_spin(flat_spin_index);
                 energy_change *= if spin { -1.0 } else { 1.0 };
@@ -168,6 +174,7 @@ impl Lattice {
                        num_spin_runs_per_weight: usize,
                        free_membrane_index: usize,
                        free_spinset_start_index: usize,
+                       observe_index: usize,
                        weight_gaussian_width: f64,
                        temperature: f64,
                        sender: mpsc::Sender<Array2<bool>>) {
@@ -180,7 +187,7 @@ impl Lattice {
 
         for index in 0..total_steps {
             if index % num_spin_runs_per_weight == 0 {
-                let xyz = rng.gen::<i32>() % 3;
+                let xyz = rng.gen::<usize>() % 3;
                 match xyz {
                     0 =>
                         self.test_and_update_weightX(
@@ -200,24 +207,25 @@ impl Lattice {
                             &flat_weight_range,
                             &unit_interval,
                             &normal_dist, inverse_T),
-                    _ => panic!("not possible."),
+                    r => panic!("not possible {}.", r),
                 }
             }
             else {
                 self.test_and_update_spin(
                     rng,
-                    &flat_weight_range,
+                    &flat_spin_range,
                     &unit_interval,
                     free_spinset_start_index, free_membrane, inverse_T);
             }
             if index % interm_step_size == 0 {
+                println!("index: {}", index);
                 //sender.send(self.cube.get_spinset(fixed_spinset_index).to_vec());
-                sender.send(self.get_membrane_spins(free_membrane_index, free_spinset_start_index));
+                sender.send(self.get_membrane_spins(free_membrane_index, observe_index));
             }
         }
     }
 
-    pub fn get_spin<'a>(&'a self, membrane_index: usize, spinset_index: usize, pos: (usize, usize)) -> &'a bool {
+    pub fn get_spin(&self, membrane_index: usize, spinset_index: usize, pos: (usize, usize)) -> bool {
         self.membranes[membrane_index].get_spin(&self.cube, spinset_index, pos)
     }
 
@@ -339,9 +347,9 @@ impl Cube {
     fn flat_weight_size(&self) -> usize {
         self.size.0 * self.size.1 * self.size.2
     }
-    fn update_membrane(membrane: Membrane, spins: Vec<bool>) {
-        assert_eq!(membrane.total_size(), spins.len());
-    }
+    //fn update_membrane(membrane: Membrane, spins: Vec<bool>) {
+    //    assert_eq!(membrane.total_size(), spins.len());
+    //}
     fn spin_updated(&mut self, pos: usize) {
         // update spin_product_x/y/z.
         let is_x_boundary = self.is_x_boundary(pos);
@@ -392,50 +400,32 @@ impl Cube {
     fn get_mut_flat_weightX<'a>(&'a mut self, pos: usize) -> &'a mut f64 { &mut self.weightX[pos] }
     fn get_mut_flat_weightY<'a>(&'a mut self, pos: usize) -> &'a mut f64 { &mut self.weightY[pos] }
     fn get_mut_flat_weightZ<'a>(&'a mut self, pos: usize) -> &'a mut f64 { &mut self.weightZ[pos] }
-    fn get_weightX<'a>(&'a self, pos: (usize, usize, usize)) -> &'a f64 {
-        &self.weightX[self.get_flat_weight_index(pos)]
+    fn get_weightX(&self, pos: (usize, usize, usize)) -> f64 {
+        self.weightX[self.get_flat_weight_index(pos)]
     }
     fn get_mut_weightX<'a>(&'a mut self, pos: (usize, usize, usize)) -> &'a mut f64 {
         let flat_pos = self.get_flat_weight_index(pos);
         &mut self.weightX[flat_pos]
     }
-    fn get_weightY<'a>(&'a self, pos: (usize, usize, usize)) -> &'a f64 {
-        &self.weightY[self.get_flat_weight_index(pos)]
+    fn get_weightY(&self, pos: (usize, usize, usize)) -> f64 {
+        self.weightY[self.get_flat_weight_index(pos)]
     }
     fn get_mut_weightY<'a>(&'a mut self, pos: (usize, usize, usize)) -> &'a mut f64 {
         let flat_pos = self.get_flat_weight_index(pos);
         &mut self.weightY[flat_pos]
     }
-    fn get_weightZ<'a>(&'a self, pos: (usize, usize, usize)) -> &'a f64 {
-        &self.weightZ[self.get_flat_weight_index(pos)]
+    fn get_weightZ(&self, pos: (usize, usize, usize)) -> f64 {
+        self.weightZ[self.get_flat_weight_index(pos)]
     }
     fn get_mut_weightZ<'a>(&'a mut self, pos: (usize, usize, usize)) -> &'a mut f64 {
         let flat_pos = self.get_flat_weight_index(pos);
         &mut self.weightZ[flat_pos]
     }
-    fn get_spin_from_flat_index<'a>(&'a self, pos: usize) -> &'a bool {
-        &self.spins[pos]
+    fn get_spin_from_flat_index(&self, pos: usize) -> bool {
+        self.spins[pos]
     }
     fn get_mut_spin_from_flat_index<'a>(&'a mut self, pos: usize) -> &'a mut bool {
         &mut self.spins[pos]
-    }
-    fn get_weightX_from_flat_index<'a>(&'a self, pos: usize) -> &'a f64 {
-        &self.weightX[pos]
-    }
-    fn get_weightY_from_flat_index<'a>(&'a self, pos: usize) -> &'a f64 {
-        &self.weightX[pos]
-    }
-    fn get_weightZ_from_flat_index<'a>(&'a self, pos: usize) -> &'a f64 {
-        &self.weightX[pos]
-    }
-    fn get_mut_weightX_from_flat_index<'a>(&'a mut self, pos: usize) -> &'a mut f64 {
-        &mut self.weightX[pos]
-    }
-    fn get_mut_weightY_from_flat_index<'a>(&'a mut self, pos: usize) -> &'a mut f64 {
-        &mut self.weightX[pos]
-    }
-    fn get_mut_weightZ_from_flat_index<'a>(&'a mut self, pos: usize) -> &'a mut f64 {
-        &mut self.weightX[pos]
     }
 
     //fn get_mut_spin_from_membrane<'a>(
@@ -494,6 +484,28 @@ impl Cube {
         (mod_z < self.z_weight_boundary_helper.0,
             mod_z >= self.z_weight_boundary_helper.1 - self.z_weight_boundary_helper.0)
     }
+    fn calculate_energy(&self) -> f64 {
+        let mut energy = 0.0;
+        for x in 0..(self.size.0 - 1) {
+            for y in 0..(self.size.1 - 1) {
+                for z in 0..(self.size.2 - 1) {
+                    let coord = (x, y, z);
+                    let weight_pos = self.get_flat_weight_index(coord);
+                    //let x_plus_pos = self.get_flat_weight_index((x + 1, y, z));
+                    //let y_plus_pos = self.get_flat_weight_index((x, y + 1, z));
+                    //let z_plus_pos = self.get_flat_weight_index((x, y, z + 1));
+                    let weightX = self.get_flat_weightX(coord);
+                    let weightY = self.get_flat_weightY(coord);
+                    let weightZ = self.get_flat_weightZ(coord);
+                    let sx = self.spin_product_x[coord];
+                    let sy = self.spin_product_y[coord];
+                    let sz = self.spin_product_z[coord];
+                    energy += sx * weightX + sy * weightY + sz * weightZ;
+                }
+            }
+        }
+        energy
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -515,7 +527,7 @@ impl Membrane {
             spinset_stride: cube.spinset_stride,
             size: size,
             spin_position: cube.get_flat_spin_index(0, p),
-            weight_position: cube.get_flat_spin_index(0, p),
+            weight_position: cube.get_flat_weight_index(p),
         }
     }
     pub fn yz(cube: &Cube, size: (usize, usize), p: (usize, usize, usize)) -> Self {
@@ -525,7 +537,7 @@ impl Membrane {
             spinset_stride: cube.spinset_stride,
             size: size,
             spin_position: cube.get_flat_spin_index(0, p),
-            weight_position: cube.get_flat_spin_index(0, p),
+            weight_position: cube.get_flat_weight_index(p),
         }
     }
     pub fn xz(cube: &Cube, size: (usize, usize), p: (usize, usize, usize)) -> Self {
@@ -535,7 +547,7 @@ impl Membrane {
             spinset_stride: cube.spinset_stride,
             size: size,
             spin_position: cube.get_flat_spin_index(0, p),
-            weight_position: cube.get_flat_spin_index(0, p),
+            weight_position: cube.get_flat_weight_index(p),
         }
     }
     fn total_size(&self) -> usize {
@@ -547,31 +559,32 @@ impl Membrane {
     }
 
     fn is_in_flat(&self, pos: usize, cube: &Cube) -> bool {
-        let rel_pos = pos - self.spin_position;
+        let rel_pos = pos as i64 - self.spin_position as i64;
         //let (index_in_oneset, _) = integer::div_mod_floor(rel_pos, cube.num_spinsets);
-        if self.spin_stride.0 <= self.spin_stride.1 {
-            let (rel_1, rem_1) = integer::div_mod_floor(rel_pos, self.spin_stride.1);
-            if rel_1 < 0 || rel_1 >= self.size.1 { false }
+        let result = if self.spin_stride.0 <= self.spin_stride.1 {
+            let (rel_1, rem_1) = integer::div_mod_floor(rel_pos, self.spin_stride.1 as i64);
+            if rel_1 < 0 || rel_1 >= self.size.1 as i64 { false }
             else {
-                let (rel_0, _) = integer::div_mod_floor(rel_1, self.spin_stride.0);
-                rel_0 < 0 || rel_0 >= self.size.0
+                let (rel_0, _) = integer::div_mod_floor(rem_1, self.spin_stride.0 as i64);
+                rel_0 >= 0 && rel_0 < self.size.0 as i64
             }
         } else {
-            let (rel_0, rem_0) = integer::div_mod_floor(rel_pos, self.spin_stride.0);
-            if rel_0 < 0 || rel_0 >= self.size.0 { false }
+            let (rel_0, rem_0) = integer::div_mod_floor(rel_pos, self.spin_stride.0 as i64);
+            if rel_0 < 0 || rel_0 >= self.size.0 as i64 { false }
             else {
-                let (rel_1, _) = integer::div_mod_floor(rel_0, self.spin_stride.1);
-                rel_1 < 0 || rel_1 >= self.size.1
+                let (rel_1, _) = integer::div_mod_floor(rem_0, self.spin_stride.1 as i64);
+                rel_1 >= 0 || rel_1 < self.size.1 as i64
             }
-        }
-
+        };
+        //println!("pos: {}, rel_pos: {}, spin_stride: {:?}, size: {:?}, is_in_flat? {}", pos, rel_pos, self.spin_stride, self.size,result);
+        result
         //let small_stride = cmp::min(self.spin_stride.0, self.spin_stride.1);
         //let (_, rel_pos) = integer::div_rem(rel_pos, cube.spinset_stride);
         //let (d, m) = integer::div_rem(index_in_oneset, small_stride);
         //m == 0 && d>=0 && d<self.size.0 * self.size.1
     }
 
-    fn get_spin<'a>(&self, cube: &'a Cube, spinset_index: usize, pos: (usize, usize)) -> &'a bool {
+    fn get_spin(&self, cube: &Cube, spinset_index: usize, pos: (usize, usize)) -> bool {
         let flat_pos = self.get_flat_spin_index(spinset_index, pos);
         cube.get_spin_from_flat_index(flat_pos)
     }
@@ -582,7 +595,9 @@ impl Membrane {
     }
 
     fn get_flat_spin_index(&self, spinset_index: usize, (x, y): (usize, usize)) -> usize {
-        self.spin_position + spinset_index * self.spinset_stride + x * self.spin_stride.0 + y * self.spin_stride.1
+        let pos = self.spin_position + spinset_index * self.spinset_stride + x * self.spin_stride.0 + y * self.spin_stride.1;
+        //println!("spin_position: {}, spinset_index: {}, stride: {}, pos: {}", self.spin_position, spinset_index, self.spinset_stride, pos);
+        pos
     }
     fn get_flat_weight_index(&self, (x, y): (usize, usize)) -> usize {
         self.weight_position + x * self.weight_stride.0 + y * self.weight_stride.1
@@ -598,9 +613,10 @@ impl Membrane {
        }
     }
     pub fn get_membrane<'a>(&self, cube: &'a Cube, spinset_index: usize) -> Array2<bool> {
-        let spins = (0..self.size.0).flat_map(move |i| {
+        let spins = (0..self.size.0).flat_map(|i| {
             (0..self.size.1).map(move |j| {
-                *self.get_spin(cube, spinset_index, (i, j))
+                //println!("({}, {})", i, j);
+                self.get_spin(cube, spinset_index, (i, j))
             })
         }).collect::<Vec<bool>>();
         Array2::new(spins, (1, self.size.0))

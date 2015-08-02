@@ -7,10 +7,11 @@ use std::thread;
 use std::sync::mpsc::channel;
 
 fn main() {
-    let train = energy_learn::mnist::read_mnist_images("/Users/chang-soon/data/mnist/train-images-idx3-ubyte",
-                              "/Users/chang-soon/data/mnist/train-labels-idx1-ubyte").unwrap();
-    let test = energy_learn::mnist::read_mnist_images("/Users/chang-soon/data/mnist/t10k-images-idx3-ubyte",
-                              "/Users/chang-soon/data/mnist/t10k-labels-idx1-ubyte").unwrap();
+    let root_dir = "/Users/changsoonpark/".to_string();
+    let train = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/train-images-idx3-ubyte"),
+                              &(root_dir.clone() + "data/mnist/train-labels-idx1-ubyte")).unwrap();
+    let test = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/t10k-images-idx3-ubyte"),
+                              &(root_dir.clone() + "data/mnist/t10k-labels-idx1-ubyte")).unwrap();
     //match m {
     //    Ok(x) => println!("okay {:?}", x),
     //    Err(e) => println!("error {}", e)
@@ -18,12 +19,14 @@ fn main() {
     println!("train and test sets are read.");
     let mut rng = rand::thread_rng();
     println!("creating a cube...");
-    let num_trains = 10;
+    let num_trains = 60000;
     let num_tests = 10;
     let cube = energy_learn::lattice::Cube::new(&mut rng, num_trains + num_tests, (28, 28, 28));
     println!("creating membranes...");
     let membrane1 = energy_learn::lattice::Membrane::xy(&cube, (28, 28), (0, 0, 0));
     let membrane2 = energy_learn::lattice::Membrane::xy(&cube, (28, 28), (0, 0, 27));
+    println!("membrane1: {:?}", membrane1);
+    println!("membrane2: {:?}", membrane2);
     let membranes = vec![membrane1, membrane2];
     // create the target images;
     let labels = (0..10).map(|x| {
@@ -56,14 +59,21 @@ fn main() {
     }
     println!("creating a shared channel...");
     let (tx, rx) = channel();
+    let observe_index = num_trains;
     thread::spawn(move || {
         let mut rng = rand::thread_rng();
-        lattice.run(&mut rng, 10000, 1000, 10, 1, 9000, 1.0, 1.0, tx);
+        lattice.run(&mut rng, 10_000_000_000, 100_000_000, 50000, 1, num_trains, observe_index, 1.0, 3.0, tx);
     });
+    //lattice.run(&mut rng, 10000, 1000, 10, 1, num_trains, 1.0, 1.0, tx);
 
     loop {
-        let data = rx.recv();
-        println!("received: {:?}", data);
+        //let data = rx.recv();
+        if let Ok(data) = rx.recv() {
+            println!("expected label: {}", if observe_index < num_trains {
+            train[observe_index].label } else {
+            test[observe_index - num_trains].label });
+            println!("received: {}", data);
+        }
     }
 }
 

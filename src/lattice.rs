@@ -16,19 +16,21 @@ pub struct Lattice {
     membranes: Vec<Membrane>,
 }
 
-trait ToNumber {
-    fn to_f64(self) -> f64;
-    fn to_i64(self) -> i64;
+trait Spin {
+    fn to_fval(self) -> f64;
+    fn to_ival(self) -> i64;
 }
 
-impl ToNumber for bool {
-    fn to_f64(self) -> f64 {
-        if self { 1.0 } else { 0.0 }
+impl Spin for bool {
+    fn to_fval(self) -> f64 {
+        if self { 1.0 } else { -1.0 }
     }
-    fn to_i64(self) -> i64 {
-        if self { 1 } else { 0 }
+    fn to_ival(self) -> i64 {
+        if self { 1 } else { -1 }
     }
 }
+
+fn spin_gap() -> i64 { 2 }
 
 trait Sum {
     fn temp_sum(&self) -> i64;
@@ -77,28 +79,28 @@ impl Lattice {
                 let weight_index = self.cube.get_weight_index_from_spin_index(pos);
 
                 if !is_x_boundary.0 { energy_change += self.cube.get_flat_weightX(weight_index - self.cube.weight_stride.0) *
-                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.0).to_f64(); }
+                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.0).to_fval(); }
                 if !is_x_boundary.1 { energy_change += self.cube.get_flat_weightX(weight_index) *
-                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.0).to_f64(); }
+                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.0).to_fval(); }
                 if !is_y_boundary.0 { energy_change += self.cube.get_flat_weightY(weight_index - self.cube.weight_stride.1) *
-                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.1).to_f64(); }
+                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.1).to_fval(); }
                 if !is_y_boundary.1 { energy_change += self.cube.get_flat_weightY(weight_index) *
-                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.1).to_f64(); }
+                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.1).to_fval(); }
                 if !is_z_boundary.0 { energy_change += self.cube.get_flat_weightZ(weight_index - self.cube.weight_stride.2) *
-                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.2).to_f64(); }
+                                                        self.cube.get_flat_spin(pos - self.cube.spin_stride.2).to_fval(); }
                 if !is_z_boundary.1 { energy_change += self.cube.get_flat_weightZ(weight_index) *
-                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.2).to_f64(); }
+                                                        self.cube.get_flat_spin(pos + self.cube.spin_stride.2).to_fval(); }
                 let spin = self.cube.get_flat_spin(flat_spin_index);
-                energy_change *= if spin { -1.0 } else { 1.0 };
+                energy_change *= if spin { spin_gap().neg() as f64 } else { spin_gap() as f64 };
                 if energy_change <= 0.0 {
                     *self.cube.get_mut_flat_spin(flat_spin_index) = !spin;
-                    self.cube.spin_updated(pos);
+                    self.cube.spin_updated(flat_spin_index);
                 }
                 else {
                     let prob = unit_interval.ind_sample(rng);
                     if prob < (inverse_T * energy_change).neg().exp() {
                         *self.cube.get_mut_flat_spin(flat_spin_index) = !spin;
-                        self.cube.spin_updated(pos);
+                        self.cube.spin_updated(flat_spin_index);
                     }
                 }
             }
@@ -203,7 +205,7 @@ impl Lattice {
             if index % interm_step_size == 0 {
                 println!("index: {}", index);
                 println!("energy: {}", self.cube.calculate_energy());
-                println!("are spin products consistent? {}", self.cube.check_spin_product_consistency());
+                //println!("are spin products consistent? {}", self.cube.check_spin_product_consistency());
                 //sender.send(self.cube.get_spinset(fixed_spinset_index).to_vec());
                 sender.send(self.get_membrane_spins(free_membrane_index, observe_index));
             }
@@ -232,6 +234,10 @@ impl Lattice {
                     free_spinset_start_index, free_membrane, inverse_T);
             }
         }
+    }
+
+    pub fn update_spin_products(&mut self) {
+        self.cube.update_spin_products();
     }
 
     pub fn get_spin(&self, membrane_index: usize, spinset_index: usize, pos: (usize, usize)) -> bool {
@@ -289,10 +295,12 @@ impl Cube {
         let spins = rng.gen_iter::<bool>().take(total_spin_size).collect::<Vec<bool>>();
         let spin_stride = (num_spin_configs, num_spin_configs * size.0, num_spin_configs * size.0 * size.1);
         //let spin_product_x = spins.iter().zip(spins.iter().skip(spin_stride.0).cycle()).map(|(s, n)| s*n).sum<i64>();
-        let mut spin_product_x = Vec::with_capacity(total_weight_size);
+        let spin_product_x = vec![0i64; total_weight_size];
+        let spin_product_y = vec![0i64; total_weight_size];
+        let spin_product_z = vec![0i64; total_weight_size];
+        /*let mut spin_product_x = Vec::with_capacity(total_weight_size);
         let mut spin_product_y = Vec::with_capacity(total_weight_size);
         let mut spin_product_z = Vec::with_capacity(total_weight_size);
-        //for i in (0..).step_by(num_spin_configs).take(total_weight_size) {
         for ii in 0..total_weight_size {
             let i = ii * num_spin_configs;
             let mut x_sum = 0i64;
@@ -306,7 +314,7 @@ impl Cube {
             spin_product_x.push(x_sum);
             spin_product_y.push(y_sum);
             spin_product_z.push(z_sum);
-        }
+        }*/
 
         //let mut spins = Vec::with_capacity(total_spin_size);
         //for i in 0..total_spin_size {
@@ -365,32 +373,27 @@ impl Cube {
         let is_y_boundary = self.is_y_boundary(pos);
         let is_z_boundary = self.is_z_boundary(pos);
         let weight_index = self.get_weight_index_from_spin_index(pos);
+        let total_spin_size = self.flat_spin_size();
         let spin = self.get_flat_spin(pos);
-        let spin_chg = if spin { 1 } else { -1 };
-        if !is_x_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.0) as i64;
+        let spin_chg = if spin { spin_gap() } else { spin_gap().neg() };
+        if weight_index - self.weight_stride.0 >= 0 {
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.0).to_ival();
             self.spin_product_x[weight_index - self.weight_stride.0] += spin_chg * prev_spin;
         }
-        if !is_x_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.0) as i64;
-            self.spin_product_x[weight_index] += spin_chg * next_spin;
-        }
-        if !is_y_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.1) as i64;
+        let next_spin = self.get_flat_spin((pos + self.spin_stride.0) % total_spin_size).to_ival();
+        self.spin_product_x[weight_index] += spin_chg * next_spin;
+        if weight_index - self.weight_stride.1 >=0 {
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.1).to_ival();
             self.spin_product_y[weight_index - self.weight_stride.1] += spin_chg * prev_spin;
         }
-        if !is_y_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.1) as i64;
-            self.spin_product_y[weight_index] += spin_chg * next_spin;
-        }
-        if !is_z_boundary.0 {
-            let prev_spin = self.get_flat_spin(pos - self.spin_stride.2) as i64;
+        let next_spin = self.get_flat_spin((pos + self.spin_stride.1) % total_spin_size).to_ival();
+        self.spin_product_y[weight_index] += spin_chg * next_spin;
+        if weight_index - self.weight_stride.2 >= 0 {
+            let prev_spin = self.get_flat_spin(pos - self.spin_stride.2).to_ival();
             self.spin_product_z[weight_index - self.weight_stride.2] += spin_chg * prev_spin;
         }
-        if !is_z_boundary.1 {
-            let next_spin = self.get_flat_spin(pos + self.spin_stride.2) as i64;
-            self.spin_product_z[weight_index] += spin_chg * next_spin;
-        }
+        let next_spin = self.get_flat_spin((pos + self.spin_stride.2) % total_spin_size).to_ival();
+        self.spin_product_z[weight_index] += spin_chg * next_spin;
     }
 
     fn get_spin<'a>(&'a self, spinset_index: usize, coords: (usize, usize, usize)) -> &'a bool {
@@ -530,9 +533,9 @@ impl Cube {
             let mut y_sum = 0i64;
             let mut z_sum = 0i64;
             for j in 0..self.num_spinsets {
-                x_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.0) % total_spin_size] as i64;
-                y_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.1) % total_spin_size] as i64;
-                z_sum += spins[i + j] as i64 * spins[(i + j + self.spin_stride.2) % total_spin_size] as i64;
+                x_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.0) % total_spin_size].to_ival();
+                y_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.1) % total_spin_size].to_ival();
+                z_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.2) % total_spin_size].to_ival();
             }
             spin_product_x.push(x_sum);
             spin_product_y.push(y_sum);
@@ -547,6 +550,26 @@ impl Cube {
         spin_product_x == self.spin_product_x &&
             spin_product_y == self.spin_product_y &&
                 spin_product_z == self.spin_product_z
+    }
+
+    fn update_spin_products(&mut self) {
+        let total_weight_size = self.flat_weight_size();
+        let total_spin_size = self.flat_spin_size();
+        let spins = &self.spins;
+        for ii in 0..total_weight_size {
+            let i = ii * self.num_spinsets;
+            let mut x_sum = 0i64;
+            let mut y_sum = 0i64;
+            let mut z_sum = 0i64;
+            for j in 0..self.num_spinsets {
+                x_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.0) % total_spin_size].to_ival();
+                y_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.1) % total_spin_size].to_ival();
+                z_sum += spins[i + j].to_ival() * spins[(i + j + self.spin_stride.2) % total_spin_size].to_ival();
+            }
+            self.spin_product_x[ii] = x_sum;
+            self.spin_product_y[ii] = y_sum;
+            self.spin_product_z[ii] = z_sum;
+        }
     }
 }
 
@@ -655,8 +678,8 @@ impl Membrane {
        }
     }
     pub fn get_membrane<'a>(&self, cube: &'a Cube, spinset_index: usize) -> Array2<bool> {
-        let spins = (0..self.size.0).flat_map(|i| {
-            (0..self.size.1).map(move |j| {
+        let spins = (0..self.size.1).flat_map(|j| {
+            (0..self.size.0).map(move |i| {
                 //println!("({}, {})", i, j);
                 self.get_spin(cube, spinset_index, (i, j))
             })
@@ -664,13 +687,3 @@ impl Membrane {
         Array2::new(spins, (1, self.size.0))
     }
 }
-
-//
-//impl Index<(usize, usize, usize)> for Cube {
-//    type Output = bool;
-//
-//    fn index<'a>(&'a self, (x, y, z): (usize, usize, usize)) -> &'a bool {
-//        &self.spins[x + y * self.stride.0 + z * self.stride.0 * self.size.1]
-//    }
-//}
-

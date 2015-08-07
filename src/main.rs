@@ -7,7 +7,7 @@ use std::thread;
 use std::sync::mpsc::channel;
 
 fn main() {
-    let root_dir = "/Users/changsoonpark/".to_string();
+    let root_dir = "/Users/chang-soon/".to_string();
     let train = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/train-images-idx3-ubyte"),
                               &(root_dir.clone() + "data/mnist/train-labels-idx1-ubyte")).unwrap();
     let test = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/t10k-images-idx3-ubyte"),
@@ -57,12 +57,14 @@ fn main() {
         //lattice.set_membrane(1, num_trains + index, &labels[image.label as usize]);
         index += 1;
     }
+    println!("update spin products after setting membranes...");
+    lattice.update_spin_products();
     println!("creating a shared channel...");
     let (tx, rx) = channel();
     let observe_index = num_trains;
     thread::spawn(move || {
         let mut rng = rand::thread_rng();
-        lattice.run(&mut rng, 10_000_000_000, 100_000_000, 50000, 1, num_trains, observe_index, 1.0, 3.0, tx);
+        lattice.run(&mut rng, 1_000_000_000_000_000, 1_000_000_000, 100, 1, num_trains, observe_index, 1.0, 3.0, tx);
     });
     //lattice.run(&mut rng, 10000, 1000, 10, 1, num_trains, 1.0, 1.0, tx);
 

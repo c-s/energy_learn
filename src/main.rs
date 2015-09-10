@@ -7,7 +7,7 @@ use std::thread;
 use std::sync::mpsc::channel;
 
 fn main() {
-    let root_dir = "/Users/chang-soon/".to_string();
+    let root_dir = "/Users/changsoonpark/".to_string();
     let train = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/train-images-idx3-ubyte"),
                               &(root_dir.clone() + "data/mnist/train-labels-idx1-ubyte")).unwrap();
     let test = energy_learn::mnist::read_mnist_images(&(root_dir.clone() + "data/mnist/t10k-images-idx3-ubyte"),
@@ -20,7 +20,7 @@ fn main() {
     let mut rng = rand::thread_rng();
     println!("creating a cube...");
     let num_trains = 60000;
-    let num_tests = 10;
+    let num_tests = 10000;
     let cube = energy_learn::lattice::Cube::new(&mut rng, num_trains + num_tests, (28, 28, 28));
     println!("creating membranes...");
     let membrane1 = energy_learn::lattice::Membrane::xy(&cube, (28, 28), (0, 0, 0));
@@ -45,11 +45,12 @@ fn main() {
         }
         let bool_data = image.data.iter().map(|&x| x > 128).collect::<Vec<bool>>();
         lattice.set_membrane(0, index, &bool_data);
-        lattice.set_membrane(1, index, &labels[image.label as usize]);
+        lattice.set_membrane(1, index, &bool_data);
+        //lattice.set_membrane(1, index, &labels[image.label as usize]);
         index += 1;
     }
     for image in test.iter().take(num_tests) {
-        if index % 10000 == 0 {
+        if index % 5000 == 0 {
             println!("index {}", index);
         }
         let bool_data = image.data.iter().map(|&x| x > 128).collect::<Vec<bool>>();
@@ -64,7 +65,7 @@ fn main() {
     let observe_index = num_trains;
     thread::spawn(move || {
         let mut rng = rand::thread_rng();
-        lattice.run(&mut rng, 1_000_000_000_000_000, 1_000_000_000, 100, 1, num_trains, observe_index, 1.0, 3.0, tx);
+        lattice.run(&mut rng, 1_000_000_000_000_000, 1_000_000_000, 1000000, 0, num_trains, observe_index, 1.0, 1.0, tx);
     });
     //lattice.run(&mut rng, 10000, 1000, 10, 1, num_trains, 1.0, 1.0, tx);
 

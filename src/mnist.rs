@@ -1,7 +1,10 @@
+extern crate itertools;
+
 use std::fmt;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io;
+use self::itertools::Itertools;
 
 const IMAGE_SIZE: usize = 28 * 28;
 const IMAGE_NUM_ROWS: usize = 28;
@@ -17,7 +20,7 @@ pub fn read_mnist_images(imagefile: &str, labelfile: &str) -> io::Result<Vec<Mni
     let _temp = image_buf.read(&mut u32buf0);
     let _temp = label_buf.read(&mut u32buf1);
     if u32buf0 != [0u8, 0, 8, 3] || u32buf1 != [0u8, 0, 8, 1] {
-        return Err(io::Error::new(io::ErrorKind::Other, "read_mnist_images: magic number does not match."))
+        return Err(io::Error::new(io::ErrorKind::Other, "read_mnist_images: magic numbers do not match."))
     }
     let _temp = image_buf.read(&mut u32buf0);
     // i don't know how to get int out of 4 bytes using a rust library.
@@ -34,25 +37,53 @@ pub fn read_mnist_images(imagefile: &str, labelfile: &str) -> io::Result<Vec<Mni
                 num_image_items, imagefile, labelfile);
     let _temp = image_buf.read(&mut u32buf0);
     let row_dimension = bytes_to_usize(&u32buf0);
-    if row_dimension != 28 {
+    if row_dimension != IMAGE_NUM_ROWS {
         return Err(io::Error::new(io::ErrorKind::Other,
-                    format!("the row dimension {} is not 28.", row_dimension)))
+                    format!("the row dimension {} is not {}.", row_dimension, IMAGE_NUM_ROWS)))
     }
     let _temp = image_buf.read(&mut u32buf1);
     let col_dimension = bytes_to_usize(&u32buf1);
-    if col_dimension != 28 {
+    if col_dimension != IMAGE_NUM_COLS {
         return Err(io::Error::new(io::ErrorKind::Other,
-                    format!("the col dimension {} is not 28.", col_dimension)))
+                    format!("the col dimension {} is not {}.", col_dimension, IMAGE_NUM_COLS)))
     }
     //let mut images: Vec<MnistImage> = Vec::with_capacity(num_image_items as usize);
-    let mut images = vec![MnistImage { data: vec![0u8; IMAGE_SIZE], label: 0u8 }; num_image_items];
+    let mut images = Vec::with_capacity(num_image_items);
+    let image_buf_bytes = image_buf.bytes();
+    let mut label_buf_bytes = label_buf.bytes();
+
+    for image_chunk in &image_buf_bytes.chunks_lazy(IMAGE_SIZE) {
+        let one_image = image_chunk.map(|x| { x.unwrap() }).collect::<Vec<u8>>();
+        let label = label_buf_bytes.next().unwrap().unwrap();
+        images.push(MnistImage { data: one_image, label: label });
+    }
+    /*let mut images = vec![MnistImage { data: vec![0u8; IMAGE_SIZE], label: 0u8 }; num_image_items];
     for one_image in &mut images { //0..num_image_items {
         //let one_image = &mut images[i]; // IMAGE_SIZE * i..IMAGE_SIZE * (i+1)];
-        let _temp = image_buf.read(&mut one_image.data);
+        let mut read_sofar = 0;
+        loop {
+            let temp = image_buf.read(&mut one_image.data);
+
+            match temp {
+                Ok(readnow) => {
+                    read_sofar += readnow;
+                    if(read_sofar < IMAGE_SIZE) {
+                        println!("more to read: read this time = {}, read_sofar = {}", readnow, read_sofar);
+                    }
+                    else {
+                        println!("read enough bytes.");
+                        break;
+                    };
+                }
+                _ =>
+                    println!("image size {:?} is incompatible.", temp)
+            }
+                //panic!(format!("image size {:?} is incompatible.", temp))
+        }
         let mut one_label = [0u8];
         let _temp = label_buf.read(&mut one_label);
         one_image.label = one_label[0];
-    }
+    }*/
     Ok(images)
 /*
         for x in &magic_buf {

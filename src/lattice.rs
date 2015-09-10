@@ -372,23 +372,27 @@ impl Cube {
         let is_x_boundary = self.is_x_boundary(pos);
         let is_y_boundary = self.is_y_boundary(pos);
         let is_z_boundary = self.is_z_boundary(pos);
+        //println!("pos: {:?}", pos);
         let weight_index = self.get_weight_index_from_spin_index(pos);
+        //println!("weight_index: {:?}", weight_index);
         let total_spin_size = self.flat_spin_size();
         let spin = self.get_flat_spin(pos);
+        //println!("spin stride0: {:?}, stride1: {:?}, stride2: {:?}", self.spin_stride.0, self.spin_stride.1, self.spin_stride.2);
+        //println!("weight stride0: {:?}, stride1: {:?}, stride2: {:?}", self.weight_stride.0, self.weight_stride.1, self.weight_stride.2);
         let spin_chg = if spin { spin_gap() } else { spin_gap().neg() };
-        if weight_index - self.weight_stride.0 >= 0 {
+        if weight_index >= self.weight_stride.0 {
             let prev_spin = self.get_flat_spin(pos - self.spin_stride.0).to_ival();
             self.spin_product_x[weight_index - self.weight_stride.0] += spin_chg * prev_spin;
         }
         let next_spin = self.get_flat_spin((pos + self.spin_stride.0) % total_spin_size).to_ival();
         self.spin_product_x[weight_index] += spin_chg * next_spin;
-        if weight_index - self.weight_stride.1 >=0 {
+        if weight_index >= self.weight_stride.1 {
             let prev_spin = self.get_flat_spin(pos - self.spin_stride.1).to_ival();
             self.spin_product_y[weight_index - self.weight_stride.1] += spin_chg * prev_spin;
         }
         let next_spin = self.get_flat_spin((pos + self.spin_stride.1) % total_spin_size).to_ival();
         self.spin_product_y[weight_index] += spin_chg * next_spin;
-        if weight_index - self.weight_stride.2 >= 0 {
+        if weight_index >= self.weight_stride.2 {
             let prev_spin = self.get_flat_spin(pos - self.spin_stride.2).to_ival();
             self.spin_product_z[weight_index - self.weight_stride.2] += spin_chg * prev_spin;
         }
